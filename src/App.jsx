@@ -156,7 +156,7 @@ function HomeScreen({ onStart }) {
 
 // ---------- Shop Screen ----------
 function ShopScreen({ state, actions }) {
-  const { hands, cardPool, shop, gold, selectedHandIndex, selectedCardPoolIndex, selectedShopIndex, message } = state;
+  const { hands, cardPool, shop, gold, selectedHandIndex, selectedCardPoolIndex, selectedShopIndex, selectedStickerIndex, message } = state;
 
   function handleShopClick(index) {
     const card = state.shop.cards[index];
@@ -449,10 +449,10 @@ function CombatScreen({ state, actions }) {
     return () => clearTimeout(t);
   }, [state.round]);
 
-  // Find the first complete hand for display
-  const playerHand = hands.find(h => h.cards.every(c => c !== null));
+  // Find the first hand with at least 1 card for display
+  const playerHand = hands.find(h => h.cards.some(c => c !== null));
   const playerCards = playerHand ? playerHand.cards.filter(Boolean) : [];
-  const playerEval = playerCards.length === 5 ? evaluateHand(playerCards) : null;
+  const playerEval = playerCards.length > 0 ? evaluateHand(playerCards) : null;
   const opponentEval = revealed && opponentHand ? evaluateHand(opponentHand) : null;
 
   function handleResolve() {
