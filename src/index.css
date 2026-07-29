@@ -321,7 +321,7 @@ body {
 
 .hand-slots {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
 }
@@ -330,13 +330,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 72px;
+  width: 90px;
+  height: 126px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
+  padding: 4px;
 }
 
 .hand-slot:hover { border-color: var(--purple); background: var(--panel); }
