@@ -159,7 +159,7 @@ function ShopScreen({ state, actions }) {
   const { hands, cardPool, shop, gold, selectedHandIndex, selectedCardPoolIndex, selectedShopIndex, message } = state;
 
   function handleShopClick(index) {
-    const card = shop[index];
+    const card = state.shop.cards[index];
     if (!card) return;
     if (selectedShopIndex === index) {
       actions.clearSelection();

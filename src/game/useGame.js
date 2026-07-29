@@ -26,7 +26,7 @@ export const STICKERS = {
 };
 
 // Economy constants exported for UI display
-export const ECON = { NUM_HANDS, HAND_DURABILITY, CARDS_PER_HAND, SHOP_SIZE, BASE_GOLD, BUY_COST, REROLL_COST, SELL_VALUE, START_HP };
+export const ECON = { NUM_HANDS, HAND_DURABILITY, CARDS_PER_HAND, SHOP_SIZE, BASE_GOLD, BUY_COST, REROLL_COST, SELL_VALUE, STICKER_COST, START_HP };
 
 function goldForRound(round) {
   return BASE_GOLD + (round - 1); // +1 per round, SAP-style curve
