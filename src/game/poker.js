@@ -41,8 +41,9 @@ function rankCounts(cards) {
   return counts;
 }
 
-// Check if all cards share the same suit
+// Check if all cards share the same suit (requires 5 cards for a real flush)
 function isFlush(cards) {
+  if (cards.length < 5) return false;
   return cards.every((c) => c.suit === cards[0].suit);
 }
 
