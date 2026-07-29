@@ -20,12 +20,26 @@ export function startBattle(
   player: Player,
   enemy: Enemy,
 ): Battle {
+  // Draw initial hand for player (up to 5 cards)
+  const initialPlayerDraw = drawCards(player.deck, 5)
+  const playerWithHand: Player = {
+    ...player,
+    deck: initialPlayerDraw.deck,
+  }
+
+  // Draw initial hand for enemy (up to 5 cards)
+  const initialEnemyDraw = drawCards(enemy.deck, 5)
+  const enemyWithHand: Enemy = {
+    ...enemy,
+    deck: initialEnemyDraw.deck,
+  }
+
   return {
     id: battleConfig.id,
-    player,
-    enemy,
+    player: playerWithHand,
+    enemy: enemyWithHand,
     roundNumber: 0,
-    state: 'Idle',
+    state: 'DrawPhase',
     log: [],
   }
 }
