@@ -83,23 +83,25 @@ function groupedRanks(cards) {
     .sort((a, b) => (b.count - a.count) || (b.value - a.value));
 }
 
-// Evaluate a 5-card hand. Returns { tier, tiebreak: number[], name }
+// Evaluate a hand (1-5 cards). Returns { tier, tiebreak: number[], name }
+// Flushes and straights only apply with exactly 5 cards (real poker rules)
 export function evaluateHand(cards) {
   const hand = cards.slice(0, 5);
-  const flush = isFlush(hand);
-  const high = straightHigh(hand);
+  const numCards = hand.filter(c => c !== null).length;
+  const flush = numCards === 5 ? isFlush(hand) : false;
+  const high = numCards === 5 ? straightHigh(hand) : 0;
   const groups = groupedRanks(hand);
 
   const counts = groups.map((g) => g.count).join('');
   const tieVals = groups.map((g) => g.value);
 
-  // Royal Flush: A-K-Q-J-10 same suit
-  if (flush && high === 14) {
+  // Royal Flush: A-K-Q-J-10 same suit (only with 5 cards)
+  if (numCards === 5 && flush && high === 14) {
     return { tier: 'Royal Flush', tiebreak: [14], name: 'Royal Flush' };
   }
 
-  // Straight Flush
-  if (flush && high > 0) {
+  // Straight Flush (only with 5 cards)
+  if (numCards === 5 && flush && high > 0) {
     return { tier: 'Straight Flush', tiebreak: [high], name: 'Straight Flush' };
   }
 
@@ -113,13 +115,13 @@ export function evaluateHand(cards) {
     return { tier: 'Full House', tiebreak: tieVals, name: 'Full House' };
   }
 
-  // Flush
-  if (flush) {
+  // Flush (only with 5 cards)
+  if (numCards === 5 && flush) {
     return { tier: 'Flush', tiebreak: tieVals, name: 'Flush' };
   }
 
-  // Straight
-  if (high > 0) {
+  // Straight (only with 5 cards)
+  if (numCards === 5 && high > 0) {
     return { tier: 'Straight', tiebreak: [high], name: 'Straight' };
   }
 

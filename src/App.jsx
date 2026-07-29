@@ -17,47 +17,6 @@ function suitClass(card) {
   return card ? SUIT_CLASS[card.suit] || '' : '';
 }
 
-// Sticker Peel Modal Component
-function StickerPeelModal({ card, handIndex, slotIndex, onSelect, onClose }) {
-  const [isPeeling, setIsPeeling] = useState(false);
-  const [selectedSticker, setSelectedSticker] = useState(null);
-
-  const stickerTypes = Object.values(STICKERS);
-
-  function handleStickerClick(sticker) {
-    setSelectedSticker(sticker);
-    setIsPeeling(true);
-    setTimeout(() => {
-      onSelect(handIndex, slotIndex, sticker.id);
-      onClose();
-    }, 800);
-  }
-
-  return (
-    <div className="sticker-modal-overlay" onClick={onClose}>
-      <div className="sticker-modal" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 16px', color: 'var(--yellow)' }}>Choose a Sticker</h3>
-        <div className="sticker-grid">
-          {stickerTypes.map((sticker) => (
-            <div
-              key={sticker.id}
-              className={`sticker-option ${selectedSticker?.id === sticker.id ? 'selected' : ''}`}
-              onClick={() => handleStickerClick(sticker)}
-            >
-              <div className="sticker-icon">{sticker.icon}</div>
-              <div className="sticker-name">{sticker.name}</div>
-              <div className="sticker-desc">{sticker.description}</div>
-            </div>
-          ))}
-        </div>
-        <button className="btn btn-sm" onClick={onClose} style={{ marginTop: 16 }}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ---------- Top Bar ----------
 function TopBar({ state, onHome }) {
   const hpPct = Math.max(0, (state.hp / ECON.START_HP) * 100);
@@ -146,6 +105,7 @@ function HomeScreen({ onStart }) {
           <li><b style={{ color: 'var(--purple)' }}>Combine</b> two identical cards (same rank + suit) to level them up.</li>
           <li><b style={{ color: 'var(--pink)' }}>Remove</b> cards from hands back to pool, or <b style={{ color: 'var(--pink)' }}>Sell</b> pool cards for gold.</li>
           <li>Hands have <b style={{ color: 'var(--pink)' }}>3 uses</b> before breaking. Build multiple hands to last the run.</li>
+          <li><b style={{ color: 'var(--orange)' }}>Stickers</b> add powerups: 💚 Heal, 🛡️ Defend, 🔰 Shield, ⚔️ Berserk, 🍀 Luck. Buy from shop (2g), click to select, then click a card to apply.</li>
           <li>When ready, hit <b style={{ color: 'var(--yellow)' }}>Showdown</b> — your best 5-card hand is scored vs the opponent's.</li>
           <li>Higher poker hand wins. Loser takes damage based on the winner's hand tier. Don't hit 0 HP.</li>
         </ul>
@@ -176,8 +136,6 @@ function ShopScreen({ state, actions }) {
     }
   }
 
-  const [stickerModal, setStickerModal] = useState(null); // { handIndex, slotIndex }
-
   function handleHandSlotClick(handIndex, slotIndex) {
     const hand = hands[handIndex];
     const card = hand.cards[slotIndex];
@@ -191,6 +149,7 @@ function ShopScreen({ state, actions }) {
     // If sticker selected and clicking a card without sticker, apply it
     if (selectedStickerIndex !== null && card !== null && !card.sticker) {
       actions.addStickerToCard(handIndex, slotIndex, selectedStickerIndex);
+      // Sticker is now used up, clear selection
       actions.clearSelection();
       return;
     }
@@ -201,8 +160,12 @@ function ShopScreen({ state, actions }) {
     }
   }
 
-  function handleStickerSelect(handIndex, slotIndex, stickerType) {
-    actions.addSticker(handIndex, slotIndex, stickerType);
+  function handleStickerPoolClick(index) {
+    if (selectedStickerIndex === index) {
+      actions.clearSelection();
+    } else {
+      actions.selectSticker(index);
+    }
   }
 
   function handleCardPoolClick(index) {
@@ -324,7 +287,7 @@ function ShopScreen({ state, actions }) {
               <div
                 key={index}
                 className={`sticker-pool-item ${selectedStickerIndex === index ? 'selected' : ''}`}
-                onClick={() => actions.selectSticker(index)}
+                onClick={() => handleStickerPoolClick(index)}
               >
                 <div className="sticker-icon-large">{sticker.icon}</div>
                 <div className="sticker-name">{sticker.name}</div>
@@ -334,7 +297,7 @@ function ShopScreen({ state, actions }) {
           </div>
           {selectedStickerIndex !== null && (
             <div className="muted small center">
-              Sticker selected — click a card in a hand to apply it.
+              Sticker selected — click a card in a hand to apply it. Click again to deselect.
             </div>
           )}
         </div>
@@ -342,70 +305,74 @@ function ShopScreen({ state, actions }) {
 
       <div className="panel">
         <h2>Shop</h2>
-        <div className="shop-section">
-          <h3 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--cyan)' }}>Cards</h3>
-          <div className="shop-grid">
-            {state.shop.cards.map((card, i) => (
-              <div
-                key={i}
-                className={`shop-slot ${card ? '' : 'empty'} ${selectedShopIndex === i ? 'selected' : ''} ${card && card.frozen ? 'frozen' : ''}`}
-                onClick={() => handleShopClick(i)}
-              >
-                <SvgCard card={card} faded={!card} showSticker={false} />
-                {card ? (
-                  <>
-                    <div className="price">{ECON.BUY_COST} gold</div>
-                    <div className="row">
-                      <button
-                        className="btn btn-sm btn-primary"
-                        disabled={gold < ECON.BUY_COST}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          actions.buy(i);
-                        }}
-                      >
-                        Buy
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        onClick={(e) => { e.stopPropagation(); actions.toggleFreeze(i); }}
-                      >
-                        {card.frozen ? '❄ Unfreeze' : '❄ Freeze'}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="muted small">sold</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        <div className="shop-section" style={{ marginTop: 20 }}>
-          <h3 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--purple)' }}>Stickers ({ECON.STICKER_COST}g each)</h3>
-          <div className="sticker-shop-grid">
-            {state.shop.stickers.map((sticker, i) => (
-              <div
-                key={i}
-                className={`sticker-shop-item ${selectedStickerIndex === i ? 'selected' : ''}`}
-                onClick={() => actions.selectSticker(i)}
-              >
-                <div className="sticker-icon-large">{sticker.icon}</div>
-                <div className="sticker-name">{sticker.name}</div>
-                <div className="sticker-desc">{sticker.description}</div>
-                <button
-                  className="btn btn-sm btn-primary"
-                  disabled={gold < ECON.STICKER_COST}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    actions.buySticker(i);
-                  }}
+        <div className="shop-container">
+          <div className="shop-cards-section">
+            <h3 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--cyan)' }}>Cards</h3>
+            <div className="shop-grid">
+              {state.shop.cards.map((card, i) => (
+                <div
+                  key={i}
+                  className={`shop-slot ${card ? '' : 'empty'} ${selectedShopIndex === i ? 'selected' : ''} ${card && card.frozen ? 'frozen' : ''}`}
+                  onClick={() => handleShopClick(i)}
                 >
-                  Buy ({ECON.STICKER_COST}g)
-                </button>
-              </div>
-            ))}
+                  <SvgCard card={card} faded={!card} showSticker={false} />
+                  {card ? (
+                    <>
+                      <div className="price">{ECON.BUY_COST} gold</div>
+                      <div className="row">
+                        <button
+                          className="btn btn-sm btn-primary"
+                          disabled={gold < ECON.BUY_COST}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            actions.buy(i);
+                          }}
+                        >
+                          Buy
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={(e) => { e.stopPropagation(); actions.toggleFreeze(i); }}
+                        >
+                          {card.frozen ? '❄ Unfreeze' : '❄ Freeze'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="muted small">sold</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          <div className="shop-stickers-section">
+            <h3 style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--purple)' }}>Stickers ({ECON.STICKER_COST}g)</h3>
+            <div className="sticker-shop-grid">
+              {state.shop.stickers.map((sticker, i) => (
+                <div
+                  key={i}
+                  className={`sticker-shop-item ${selectedStickerIndex === i ? 'selected' : ''}`}
+                  onClick={() => actions.selectSticker(i)}
+                >
+                  <div className="sticker-icon-large">{sticker.icon}</div>
+                  <div className="sticker-info">
+                    <div className="sticker-name">{sticker.name}</div>
+                    <div className="sticker-desc">{sticker.description}</div>
+                  </div>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    disabled={gold < ECON.STICKER_COST}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      actions.buySticker(i);
+                    }}
+                  >
+                    Buy
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
         
@@ -422,29 +389,18 @@ function ShopScreen({ state, actions }) {
 
       <DamageTable />
       <Log log={state.log} />
-      {stickerModal && (
-        <StickerPeelModal
-          card={hands[stickerModal.handIndex].cards[stickerModal.slotIndex]}
-          handIndex={stickerModal.handIndex}
-          slotIndex={stickerModal.slotIndex}
-          onSelect={handleStickerSelect}
-          onClose={() => setStickerModal(null)}
-        />
-      )}
     </>
   );
 }
 
 // ---------- Combat Screen ----------
 function CombatScreen({ state, actions }) {
-  const { hands, opponentHand, opponentName, lastResult } = state;
+  const { hands, opponentHand, opponentName, lastResult, combatResolved } = state;
   const [revealed, setRevealed] = useState(false);
-  const [resolved, setResolved] = useState(false);
 
   // Auto-reveal opponent after a beat
   useEffect(() => {
     setRevealed(false);
-    setResolved(false);
     const t = setTimeout(() => setRevealed(true), 600);
     return () => clearTimeout(t);
   }, [state.round]);
@@ -452,13 +408,9 @@ function CombatScreen({ state, actions }) {
   // Find the first hand with at least 1 card for display
   const playerHand = hands.find(h => h.cards.some(c => c !== null));
   const playerCards = playerHand ? playerHand.cards.filter(Boolean) : [];
+  // Evaluate even if not 5 cards - partial hands can still win
   const playerEval = playerCards.length > 0 ? evaluateHand(playerCards) : null;
   const opponentEval = revealed && opponentHand ? evaluateHand(opponentHand) : null;
-
-  function handleResolve() {
-    actions.resolveCombat();
-    setResolved(true);
-  }
 
   const winner = lastResult?.winner;
 
@@ -497,18 +449,31 @@ function CombatScreen({ state, actions }) {
         )}
       </div>
 
-      {!resolved ? (
-        <button className="btn btn-primary btn-lg" onClick={handleResolve} disabled={!revealed}>
+      {!combatResolved ? (
+        <button className="btn btn-primary btn-lg" onClick={actions.resolveCombat} disabled={!revealed}>
           {revealed ? '🃏 Reveal & Resolve' : '...'}
         </button>
       ) : (
         <>
           {lastResult && (
-            <div className={`result-banner ${winner}`}>
-              {winner === 'player' && `🏆 You Win! ${lastResult.player.tier} beats ${lastResult.opponent.tier}`}
-              {winner === 'opponent' && `💢 You Lose — ${lastResult.opponent.tier} beats ${lastResult.player.tier} (−${lastResult.damage} HP)`}
-              {winner === 'draw' && `🤝 Draw — both ${lastResult.player.tier}`}
-            </div>
+            <>
+              <div className={`result-banner ${winner}`}>
+                {winner === 'player' && `🏆 You Win! ${lastResult.player.tier} beats ${lastResult.opponent.tier}`}
+                {winner === 'opponent' && `💢 You Lose — ${lastResult.opponent.tier} beats ${lastResult.player.tier}`}
+                {winner === 'draw' && `🤝 Draw — both ${lastResult.player.tier}`}
+              </div>
+              <div className="damage-counter">
+                <div className="damage-player">
+                  <span className="damage-label">Damage You Took:</span>
+                  <span className="damage-value">{winner === 'opponent' ? lastResult.damage : 0}</span>
+                </div>
+                <div className="damage-vs">VS</div>
+                <div className="damage-opponent">
+                  <span className="damage-label">Damage Opponent Took:</span>
+                  <span className="damage-value">{winner === 'player' ? lastResult.damage : 0}</span>
+                </div>
+              </div>
+            </>
           )}
           {state.hp > 0 ? (
             <button className="btn btn-primary btn-lg" onClick={actions.continueAfterCombat}>

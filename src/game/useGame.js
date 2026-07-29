@@ -5,15 +5,15 @@ import { makeCard, fullDeck, shuffle, isSameCard, combineCards } from './cards.j
 import { evaluateHand, TIER_DAMAGE, HAND_TIERS } from './poker.js';
 import { generateOpponentHand, opponentName } from './opponent.js';
 
-const NUM_HANDS = 5;
+const NUM_HANDS = 2;
 const HAND_DURABILITY = 3; // Each hand can be used 3 times before discarding
 const CARDS_PER_HAND = 5;
-const SHOP_SIZE = 5;
-const BASE_GOLD = 15;
+const SHOP_SIZE = 4;
+const BASE_GOLD = 100;
 const BUY_COST = 3;
 const REROLL_COST = 1;
 const SELL_VALUE = 1;
-const STICKER_COST = 2;
+const STICKER_COST = 10;
 const START_HP = 30;
 
 // Sticker definitions
@@ -22,6 +22,11 @@ export const STICKERS = {
   DEFEND: { id: 'defend', name: 'Defend', icon: '🛡️', description: 'Reduces next damage by card\'s rank value' },
   SHIELD: { id: 'shield', name: 'Shield', icon: '🔰', description: 'Blocks all damage once' },
   BERSERK: { id: 'berserk', name: 'Berserk', icon: '⚔️', description: 'Deals +card rank bonus damage' },
+  DOUBLE: { id: 'double', name: 'Double', icon: '💥', description: 'Deals 2x damage this round' },
+  SWAP_DECK: { id: 'swap_deck', name: 'Swap Deck', icon: '🔄', description: 'Swap your hand with opponent\'s' },
+  SWAP_CARD: { id: 'swap_card', name: 'Steal Card', icon: '👻', description: 'Swap one card with opponent' },
+  FORTIFY: { id: 'fortify', name: 'Fortify', icon: '⛨️', description: 'Hand gains +1 durability' },
+  COPY: { id: 'copy', name: 'Copy', icon: '📋', description: 'Copy opponent\'s highest card' },
   LUCK: { id: 'luck', name: 'Luck', icon: '🍀', description: 'Rerolls shop for free once' },
 };
 
@@ -36,12 +41,16 @@ function rollShop() {
   const deck = fullDeck();
   shuffle(deck);
   const cards = deck.slice(0, SHOP_SIZE).map((card) => ({ ...card, frozen: false }));
-  // Generate random stickers for shop
+  // Generate 2 random stickers for shop
   const stickers = [];
   const stickerTypes = Object.keys(STICKERS);
-  for (let i = 0; i < 3; i++) {
+  const usedTypes = new Set();
+  while (stickers.length < 2) {
     const randomType = stickerTypes[Math.floor(Math.random() * stickerTypes.length)];
-    stickers.push({ ...STICKERS[randomType], id: `sticker-${i}-${Date.now()}` });
+    if (!usedTypes.has(randomType)) {
+      usedTypes.add(randomType);
+      stickers.push({ ...STICKERS[randomType], id: `sticker-${stickers.length}-${Date.now()}` });
+    }
   }
   return { cards, stickers };
 }
@@ -52,6 +61,7 @@ function createEmptyHand() {
     cards: Array(CARDS_PER_HAND).fill(null),
     durability: HAND_DURABILITY,
     maxDurability: HAND_DURABILITY,
+    stickers: [],
   };
 }
 
@@ -107,12 +117,16 @@ function reducer(state, action) {
       const newCards = [...kept, ...fresh];
       while (newCards.length < SHOP_SIZE) newCards.push(null);
       
-      // Reroll stickers too
+      // Reroll stickers too (2 unique stickers)
       const stickerTypes = Object.keys(STICKERS);
       const newStickers = [];
-      for (let i = 0; i < 3; i++) {
+      const usedTypes = new Set();
+      while (newStickers.length < 2) {
         const randomType = stickerTypes[Math.floor(Math.random() * stickerTypes.length)];
-        newStickers.push({ ...STICKERS[randomType], id: `sticker-${i}-${Date.now()}` });
+        if (!usedTypes.has(randomType)) {
+          usedTypes.add(randomType);
+          newStickers.push({ ...STICKERS[randomType], id: `sticker-${newStickers.length}-${Date.now()}` });
+        }
       }
       
       return {
@@ -340,6 +354,10 @@ function reducer(state, action) {
       return { ...state, selectedCardPoolIndex: action.index, selectedHandIndex: null, selectedShopIndex: null, message: '' };
     }
 
+    case 'SELECT_STICKER': {
+      return { ...state, selectedStickerIndex: action.index, selectedHandIndex: null, selectedCardPoolIndex: null, selectedShopIndex: null, message: '' };
+    }
+
     case 'SELECT_SHOP': {
       return { ...state, selectedShopIndex: action.index, selectedHandIndex: null, selectedCardPoolIndex: null, message: '' };
     }
@@ -382,27 +400,34 @@ function reducer(state, action) {
           ...state,
           lastResult: result,
           hp: newHp,
-          screen: newHp <= 0 ? 'gameover' : 'shop',
-          round: state.round + 1,
-          gold: newHp > 0 ? goldForRound(state.round + 1) : state.gold,
-          shop: newHp > 0 ? rollShop() : state.shop,
-          message: newHp <= 0 ? 'You have been defeated. Run over.' : '',
+          combatResolved: true,
           log: pushLog({ ...state }, `💀 No hand played — took ${result.damage} damage.`),
         };
       }
 
-      // Evaluate only the cards that exist (1-5 cards)
+      // Evaluate the hand - can be any number of cards
       const playerCards = playerHand.cards.filter(c => c !== null);
-      const result = playerCards.length > 0 ? evaluateHand(playerCards) : { tier: 'High Card', tiebreak: [0], name: 'High Card' };
-      const opponentEval = evaluateHand(state.opponentHand);
+      let result, winner, opponentEval;
+      
+      // Always evaluate both hands, even if not 5 cards
+      result = evaluateHand(playerCards);
+      opponentEval = evaluateHand(state.opponentHand);
+      const playerTierVal = HAND_TIERS.indexOf(result.tier);
+      const opponentTierVal = HAND_TIERS.indexOf(opponentEval.tier);
+      winner = playerTierVal > opponentTierVal ? 'player' : playerTierVal < opponentTierVal ? 'opponent' : 'draw';
       
       // Calculate sticker effects
       let bonusDamage = 0;
       let healAmount = 0;
       let damageReduction = 0;
       let shieldActive = false;
+      let doubleDamage = false;
+      let swapDeck = false;
+      let swapCardIndex = null;
+      let skipDamage = false;
+      let copyCard = false;
       
-      playerHand.cards.forEach(card => {
+      playerCards.forEach((card, index) => {
         if (card.sticker) {
           const stickerValue = card.sticker.value;
           switch (card.sticker.type) {
@@ -418,33 +443,105 @@ function reducer(state, action) {
             case 'berserk':
               bonusDamage += stickerValue;
               break;
+            case 'double':
+              doubleDamage = true;
+              break;
+            case 'swap_deck':
+              swapDeck = true;
+              break;
+            case 'swap_card':
+              swapCardIndex = index;
+              break;
+          case 'fortify':
+            // Hand gains +1 durability (handled in hand durability decrease)
+            break;
+          case 'copy':
+            copyCard = true;
+            break;
           }
         }
       });
       
-      // Simple comparison using tier value
-      const playerTierVal = HAND_TIERS.indexOf(result.tier);
-      const opponentTierVal = HAND_TIERS.indexOf(opponentEval.tier);
-      const winner = playerTierVal > opponentTierVal ? 'player' : playerTierVal < opponentTierVal ? 'opponent' : 'draw';
+      // Handle swap deck - swap hands
+      let finalPlayerCards = playerCards;
+      let finalOpponentCards = state.opponentHand;
+      if (swapDeck) {
+        finalPlayerCards = [...state.opponentHand];
+        finalOpponentCards = [...playerCards];
+        // Re-evaluate with swapped hands
+        result = evaluateHand(finalPlayerCards.filter(c => c !== null));
+        opponentEval = evaluateHand(finalOpponentCards.filter(c => c !== null));
+      }
       
-      let damage = 0;
-      if (winner === 'player') {
-        damage = TIER_DAMAGE[result.tier] + bonusDamage;
-      } else if (winner === 'opponent') {
-        damage = TIER_DAMAGE[opponentEval.tier];
-        if (shieldActive) {
-          damage = 0; // Shield blocks all damage
-        } else {
-          damage = Math.max(0, damage - damageReduction);
+      // Handle swap card - swap one card
+      if (swapCardIndex !== null && finalOpponentCards[swapCardIndex]) {
+        const newPlayerCards = [...finalPlayerCards];
+        const newOpponentCards = [...finalOpponentCards];
+        const playerCard = newPlayerCards[swapCardIndex];
+        newPlayerCards[swapCardIndex] = newOpponentCards[swapCardIndex];
+        newOpponentCards[swapCardIndex] = playerCard;
+        finalPlayerCards = newPlayerCards;
+        finalOpponentCards = newOpponentCards;
+        // Re-evaluate with swapped card
+        result = evaluateHand(finalPlayerCards.filter(c => c !== null));
+        opponentEval = evaluateHand(finalOpponentCards.filter(c => c !== null));
+      }
+      
+      // Handle copy - copy opponent's highest card
+      if (copyCard && finalOpponentCards.length > 0) {
+        const opponentCards = finalOpponentCards.filter(c => c !== null);
+        if (opponentCards.length > 0) {
+          // Find highest value card
+          const highestCard = opponentCards.reduce((a, b) => 
+            (RANK_VALUE[a.rank] || 0) > (RANK_VALUE[b.rank] || 0) ? a : b
+          );
+          // Add a copy to player's hand (replace first empty slot or add if less than 5)
+          const newPlayerCards = [...finalPlayerCards];
+          const emptySlot = newPlayerCards.findIndex(c => c === null);
+          if (emptySlot !== -1) {
+            newPlayerCards[emptySlot] = { ...highestCard, id: `copy-${Date.now()}` };
+            finalPlayerCards = newPlayerCards;
+            // Re-evaluate with copied card
+            result = evaluateHand(finalPlayerCards.filter(c => c !== null));
+          }
         }
       }
       
-      const newHp = Math.max(0, Math.min(START_HP, state.hp + healAmount - damage));
+      let playerDamage = 0;
+      let opponentDamage = 0;
+      
+      if (winner === 'player') {
+        // Player wins - opponent takes damage
+        opponentDamage = TIER_DAMAGE[result.tier] + bonusDamage;
+        if (doubleDamage) opponentDamage *= 2;
+      } else if (winner === 'opponent') {
+        // Opponent wins - player takes damage
+        if (skipDamage) {
+          playerDamage = 0; // Skip blocks all damage
+        } else {
+          playerDamage = TIER_DAMAGE[opponentEval.tier];
+          if (shieldActive) {
+            playerDamage = 0; // Shield blocks all damage
+          } else {
+            playerDamage = Math.max(0, playerDamage - damageReduction);
+          }
+        }
+      }
+      
+      // Player only takes damage they receive, and gains heal
+      const newHp = Math.max(0, Math.min(START_HP, state.hp + healAmount - playerDamage));
       
       // Decrease durability of used hand
-      const hands = state.hands.map((h, i) => {
-        if (i !== state.hands.indexOf(playerHand)) return h;
-        const newDurability = h.durability - 1;
+      const hands = state.hands.map((h) => {
+        if (h.id !== playerHand.id) return h;
+        
+        // Check for fortify sticker - increases durability by 1 before decreasing
+        const hasFortify = h.stickers.some(s => s.type === 'fortify');
+        let newDurability = h.durability - 1;
+        if (hasFortify) {
+          newDurability = Math.min(h.maxDurability, newDurability + 1);
+        }
+        
         if (newDurability <= 0) {
           // Hand is destroyed, return empty hand
           return createEmptyHand();
@@ -452,50 +549,44 @@ function reducer(state, action) {
         return { ...h, durability: newDurability };
       });
 
-      let screen = 'shop';
-      let message = '';
-      if (newHp <= 0) {
-        screen = 'gameover';
-        message = 'You have been defeated. Run over.';
-      } else if (winner === 'player') {
-        message = `You win! ${result.tier} beats ${opponentEval.tier} (−${damage} opponent HP).${healAmount > 0 ? ` Healed ${healAmount} HP!` : ''}`;
-      } else if (winner === 'opponent') {
-        message = `You lose — took ${damage} damage.${healAmount > 0 ? ` Healed ${healAmount} HP!` : ''}${shieldActive && damage === 0 ? ' Shield blocked damage!' : ''}`;
-      } else {
-        message = 'Draw — no damage either way.';
-      }
-
       return {
         ...state,
         hands,
-        lastResult: { player: result, opponent: opponentEval, winner, damage },
+        opponentHand: finalOpponentCards,
+        lastResult: { player: result, opponent: opponentEval, winner, damage: playerDamage },
         hp: newHp,
-        screen,
-        round: state.round + 1,
-        gold: newHp > 0 ? goldForRound(state.round + 1) : state.gold,
-        shop: newHp > 0 ? rollShop() : state.shop,
-        opponentHand: null,
-        message,
+        combatResolved: true,
         log: pushLog(
           { ...state },
           winner === 'player'
             ? `🏆 Win vs ${state.opponentName} (${result.tier} beats ${opponentEval.tier}).${healAmount > 0 ? ` Healed ${healAmount} HP.` : ''}`
             : winner === 'opponent'
-            ? `💢 Loss vs ${state.opponentName} (-${damage} HP). ${result.tier} vs ${opponentEval.tier}.${shieldActive && damage === 0 ? ' Shield blocked!' : ''}`
+            ? `💢 Loss vs ${state.opponentName} (-${playerDamage} HP). ${result.tier} vs ${opponentEval.tier}.${shieldActive && playerDamage === 0 ? ' Shield blocked!' : ''}`
             : `🤝 Draw vs ${state.opponentName} (${result.tier}).`
         ),
       };
     }
 
     case 'CONTINUE_AFTER_COMBAT': {
+      const newHp = state.hp;
+      const newRound = state.round + 1;
+      
+      // Remove all stickers from cards (stickers are consumed after combat)
+      const hands = state.hands.map(h => ({
+        ...h,
+        cards: h.cards.map(c => c ? { ...c, sticker: null } : c)
+      }));
+      
       return {
         ...state,
+        hands,
         screen: 'shop',
-        round: state.round + 1,
-        gold: goldForRound(state.round + 1),
+        round: newRound,
+        gold: goldForRound(newRound),
         shop: rollShop(),
         opponentHand: null,
-        message: '',
+        combatResolved: false,
+        message: newHp <= 0 ? 'You have been defeated. Run over.' : '',
       };
     }
 

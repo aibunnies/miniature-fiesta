@@ -16,7 +16,7 @@ function targetTierForRound(round) {
   return 'Straight Flush';              // very late / boss
 }
 
-// Build a random 5-card hand, retrying until it's at or near the target tier
+// Build a random hand (1-5 cards), retrying until it's at or near the target tier
 export function generateOpponentHand(round) {
   const target = targetTierForRound(round);
   const targetVal = TIER_VALUE[target];
@@ -25,9 +25,24 @@ export function generateOpponentHand(round) {
   let best = null;
   let bestDist = Infinity;
 
+  // Determine hand size: earlier rounds more likely to have fewer cards
+  // Round 1-3: 1-4 cards, Round 4-6: 2-5 cards, Round 7+: 3-5 cards
+  let minCards, maxCards;
+  if (round <= 3) {
+    minCards = 1;
+    maxCards = 4;
+  } else if (round <= 6) {
+    minCards = 2;
+    maxCards = 5;
+  } else {
+    minCards = 3;
+    maxCards = 5;
+  }
+
   // Try a number of random draws, pick the one closest to (but not far above) target
   for (let attempt = 0; attempt < 60; attempt++) {
-    const hand = shuffle([...deck]).slice(0, 5);
+    const numCards = Math.floor(Math.random() * (maxCards - minCards + 1)) + minCards;
+    const hand = shuffle([...deck]).slice(0, numCards);
     const ev = evaluateHand(hand);
     const dist = Math.abs(TIER_VALUE[ev.tier] - targetVal);
 
