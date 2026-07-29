@@ -144,7 +144,8 @@ body {
 .home-hero > div {
   width: min(1080px, 100%) !important;
   height: auto !important;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 16 / 9;
+  min-height: 320px;
   position: relative;
 }
 

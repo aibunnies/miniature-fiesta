@@ -63,13 +63,13 @@ function HomeScreen({ onStart }) {
   return (
     <div className="home">
       <div className="home-hero">
-        <div style={{ width: '1080px', height: '1080px', position: 'relative', margin: '0 auto' }}>
+        <div style={{ position: 'relative', margin: '0 auto' }}>
           <GradientBlinds
             gradientColors={['#FF9FFC', '#5227FF']}
             angle={0}
             noise={0.3}
             blindCount={16}
-            blindMinWidth={60}
+            blindMinWidth={50}
             mouseDampening={0.15}
             mirrorGradient={false}
             spotlightRadius={0.5}
@@ -78,7 +78,7 @@ function HomeScreen({ onStart }) {
             distortAmount={0}
             shineDirection="left"
           />
-          <ASCIIText text="P0KeR?" enableWaves={true} asciiFontSize={10} />
+          <ASCIIText text="P0KeR?" enableWaves={true} asciiFontSize={5} textFontSize={200} />
         </div>
       </div>
       <h1 className="home-title">P0KeR?</h1>
@@ -88,10 +88,6 @@ function HomeScreen({ onStart }) {
         your hand faces a computer opponent in a poker showdown — the better hand wins, the
         loser takes damage. Survive as long as you can.
       </p>
-
-      <div className="home-cards-preview">
-        <AsciiCardRow cards={previewCards} showHand={true} />
-      </div>
 
       <div className="row center">
         <button className="btn btn-primary btn-lg" onClick={onStart}>
