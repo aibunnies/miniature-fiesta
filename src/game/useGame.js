@@ -1,11 +1,11 @@
 // Game state management via useReducer — implements the full SAP-style loop with multi-hand durability system.
 
 import { useReducer, useCallback } from 'react';
-import { makeCard, fullDeck, shuffle, isSameCard, combineCards } from './cards.js';
+import { makeCard, fullDeck, shuffle, isSameCard, combineCards, RANK_VALUE } from './cards.js';
 import { evaluateHand, TIER_DAMAGE, HAND_TIERS } from './poker.js';
 import { generateOpponentHand, opponentName } from './opponent.js';
 
-const NUM_HANDS = 2;
+const NUM_HANDS = 1;
 const HAND_DURABILITY = 3; // Each hand can be used 3 times before discarding
 const CARDS_PER_HAND = 5;
 const SHOP_SIZE = 4;
@@ -49,7 +49,8 @@ function rollShop() {
     const randomType = stickerTypes[Math.floor(Math.random() * stickerTypes.length)];
     if (!usedTypes.has(randomType)) {
       usedTypes.add(randomType);
-      stickers.push({ ...STICKERS[randomType], id: `sticker-${stickers.length}-${Date.now()}` });
+      // Preserve the sticker type in `type` (combat reads it); `id` stays unique for keys/selection.
+      stickers.push({ ...STICKERS[randomType], type: STICKERS[randomType].id, id: `sticker-${stickers.length}-${Date.now()}` });
     }
   }
   return { cards, stickers };
@@ -125,7 +126,7 @@ function reducer(state, action) {
         const randomType = stickerTypes[Math.floor(Math.random() * stickerTypes.length)];
         if (!usedTypes.has(randomType)) {
           usedTypes.add(randomType);
-          newStickers.push({ ...STICKERS[randomType], id: `sticker-${newStickers.length}-${Date.now()}` });
+          newStickers.push({ ...STICKERS[randomType], type: STICKERS[randomType].id, id: `sticker-${newStickers.length}-${Date.now()}` });
         }
       }
       
@@ -235,11 +236,15 @@ function reducer(state, action) {
       const sticker = state.stickerPool[stickerIndex];
       if (!sticker) return { ...state, message: 'No sticker in pool.' };
       
+      // Create a properly-formed sticker with type and value derived from the card's rank.
+      // Shop stickers carry a `type` field (e.g. 'defend'); combat logic reads .type and .value.
+      const appliedSticker = createSticker(sticker.type, card.rank);
+      
       const hands = state.hands.map((h, i) => {
         if (i !== handIndex) return h;
         return {
           ...h,
-          cards: h.cards.map((c, si) => si === slotIndex ? { ...c, sticker } : c)
+          cards: h.cards.map((c, si) => si === slotIndex ? { ...c, sticker: appliedSticker } : c)
         };
       });
       const stickerPool = state.stickerPool.filter((_, i) => i !== stickerIndex);
@@ -462,29 +467,50 @@ function reducer(state, action) {
         }
       });
       
-      // Handle swap deck - swap hands
+      // Handle swap deck - swap entire hands
       let finalPlayerCards = playerCards;
       let finalOpponentCards = state.opponentHand;
       if (swapDeck) {
-        finalPlayerCards = [...state.opponentHand];
-        finalOpponentCards = [...playerCards];
+        // Store opponent's hand in a temp variable (array x)
+        const storedOpponentHand = [...finalOpponentCards];
+        // Replace opponent's hand with the player's hand
+        finalOpponentCards = [...finalPlayerCards];
+        // Replace player's hand with the stored opponent hand
+        finalPlayerCards = storedOpponentHand;
         // Re-evaluate with swapped hands
         result = evaluateHand(finalPlayerCards.filter(c => c !== null));
         opponentEval = evaluateHand(finalOpponentCards.filter(c => c !== null));
       }
       
-      // Handle swap card - swap one card
-      if (swapCardIndex !== null && finalOpponentCards[swapCardIndex]) {
-        const newPlayerCards = [...finalPlayerCards];
-        const newOpponentCards = [...finalOpponentCards];
-        const playerCard = newPlayerCards[swapCardIndex];
-        newPlayerCards[swapCardIndex] = newOpponentCards[swapCardIndex];
-        newOpponentCards[swapCardIndex] = playerCard;
-        finalPlayerCards = newPlayerCards;
-        finalOpponentCards = newOpponentCards;
-        // Re-evaluate with swapped card
-        result = evaluateHand(finalPlayerCards.filter(c => c !== null));
-        opponentEval = evaluateHand(finalOpponentCards.filter(c => c !== null));
+      // Handle swap card - steal opponent's highest card, give them our sticker card
+      if (swapCardIndex !== null) {
+        const opponentCardsNonNull = finalOpponentCards.filter(c => c !== null);
+        if (opponentCardsNonNull.length > 0) {
+          // Find the opponent's highest-value card and its index in finalOpponentCards
+          let bestOppIdx = 0;
+          let bestOppVal = -1;
+          finalOpponentCards.forEach((c, i) => {
+            if (c && (RANK_VALUE[c.rank] || 0) > bestOppVal) {
+              bestOppVal = RANK_VALUE[c.rank] || 0;
+              bestOppIdx = i;
+            }
+          });
+
+          // Store opponent's card in a temp variable (array x)
+          const storedOpponentCard = finalOpponentCards[bestOppIdx];
+          // Replace opponent's card with the player's sticker card
+          const newOpponentCards = [...finalOpponentCards];
+          newOpponentCards[bestOppIdx] = finalPlayerCards[swapCardIndex];
+          // Replace player's card with the stored opponent card
+          const newPlayerCards = [...finalPlayerCards];
+          newPlayerCards[swapCardIndex] = storedOpponentCard;
+
+          finalPlayerCards = newPlayerCards;
+          finalOpponentCards = newOpponentCards;
+          // Re-evaluate with swapped card
+          result = evaluateHand(finalPlayerCards.filter(c => c !== null));
+          opponentEval = evaluateHand(finalOpponentCards.filter(c => c !== null));
+        }
       }
       
       // Handle copy - copy opponent's highest card
@@ -506,6 +532,13 @@ function reducer(state, action) {
           }
         }
       }
+      
+      // Recalculate winner based on final (possibly swapped/modified) hands.
+      // Stickers like swap_deck, swap_card, and copy change the hands after the
+      // initial winner determination, so the winner must be re-derived here.
+      const finalPlayerTierVal = HAND_TIERS.indexOf(result.tier);
+      const finalOpponentTierVal = HAND_TIERS.indexOf(opponentEval.tier);
+      winner = finalPlayerTierVal > finalOpponentTierVal ? 'player' : finalPlayerTierVal < finalOpponentTierVal ? 'opponent' : 'draw';
       
       let playerDamage = 0;
       let opponentDamage = 0;
@@ -532,11 +565,13 @@ function reducer(state, action) {
       const newHp = Math.max(0, Math.min(START_HP, state.hp + healAmount - playerDamage));
       
       // Decrease durability of used hand
+      // If swap_deck was used, persist the swapped cards (opponent's hand) into the player's hand
+      // so they keep those cards going into the next shop phase.
       const hands = state.hands.map((h) => {
         if (h.id !== playerHand.id) return h;
         
-        // Check for fortify sticker - increases durability by 1 before decreasing
-        const hasFortify = h.stickers.some(s => s.type === 'fortify');
+        // Check for fortify sticker on any card in the hand - increases durability by 1 before decreasing
+        const hasFortify = h.cards.some(c => c && c.sticker && c.sticker.type === 'fortify');
         let newDurability = h.durability - 1;
         if (hasFortify) {
           newDurability = Math.min(h.maxDurability, newDurability + 1);
@@ -546,7 +581,11 @@ function reducer(state, action) {
           // Hand is destroyed, return empty hand
           return createEmptyHand();
         }
-        return { ...h, durability: newDurability };
+        // Persist the final (possibly swapped) player cards into the hand.
+        // finalPlayerCards is a filtered array (no nulls); pad it back to CARDS_PER_HAND slots.
+        const paddedCards = [...finalPlayerCards];
+        while (paddedCards.length < CARDS_PER_HAND) paddedCards.push(null);
+        return { ...h, cards: paddedCards.slice(0, CARDS_PER_HAND), durability: newDurability };
       });
 
       return {
